@@ -172,7 +172,6 @@ jobs:
           args: |
             --amd64 \
             --aarch64 \
-            --cosign \
             --target /data/addon
 
   test-addon:
@@ -211,5 +210,4 @@ jobs:
             --test \
             --amd64 \
             --aarch64 \
-            --cosign \
             --target /data/addon

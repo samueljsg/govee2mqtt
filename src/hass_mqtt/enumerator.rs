@@ -6,7 +6,7 @@ use crate::hass_mqtt::instance::EntityList;
 use crate::hass_mqtt::light::DeviceLight;
 use crate::hass_mqtt::number::WorkModeNumber;
 use crate::hass_mqtt::scene::SceneConfig;
-use crate::hass_mqtt::select::{SceneModeSelect, WorkModeSelect};
+use crate::hass_mqtt::select::{ModeSelect, SceneModeSelect, WorkModeSelect};
 use crate::hass_mqtt::sensor::{CapabilitySensor, DeviceStatusDiagnostic, GlobalFixedDiagnostic};
 use crate::hass_mqtt::switch::CapabilitySwitch;
 use crate::hass_mqtt::work_mode::ParsedWorkMode;
@@ -183,8 +183,13 @@ pub async fn enumerate_entities_for_device(
                 | DeviceCapabilityKind::SegmentColorSetting
                 | DeviceCapabilityKind::MusicSetting
                 | DeviceCapabilityKind::Event
-                | DeviceCapabilityKind::Mode
                 | DeviceCapabilityKind::DynamicScene => {}
+
+                DeviceCapabilityKind::Mode => {
+                    if let Some(select) = ModeSelect::new(d, state, cap).await? {
+                        entities.add(select);
+                    }
+                }
 
                 DeviceCapabilityKind::Range if cap.instance == "brightness" => {}
                 DeviceCapabilityKind::Range if cap.instance == "humidity" => {}

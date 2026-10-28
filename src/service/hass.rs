@@ -3,7 +3,7 @@ use crate::hass_mqtt::enumerator::{enumerate_all_entites, enumerate_entities_for
 use crate::hass_mqtt::humidifier::{mqtt_device_set_work_mode, mqtt_humidifier_set_target};
 use crate::hass_mqtt::instance::EntityList;
 use crate::hass_mqtt::number::mqtt_number_command;
-use crate::hass_mqtt::select::mqtt_set_mode_scene;
+use crate::hass_mqtt::select::{mqtt_select_mode_command, mqtt_set_mode_scene};
 use crate::lan_api::DeviceColor;
 use crate::opt_env_var;
 use crate::platform_api::{from_json, DeviceType};
@@ -451,11 +451,16 @@ async fn mqtt_switch_command(
         _ => anyhow::bail!("invalid {command} for {id}"),
     };
 
-    if instance == "powerSwitch" {
+    if instance == "powerSwitch" && device.device_type() == DeviceType::Light {
         state.device_power_on(&device, on).await?;
     } else if let Some(client) = state.get_platform_client().await {
         if let Some(http_dev) = &device.http_device_info {
             client.set_toggle_state(http_dev, &instance, on).await?;
+            let state = state.clone();
+            let dev_id = device.id.clone();
+            tokio::spawn(async move {
+                state.poll_after_control(dev_id).await;
+            });
         } else {
             anyhow::bail!("No platform state available to set {id} {instance} to {on}");
         }
@@ -567,6 +572,12 @@ async fn run_mqtt_loop(
             .await?;
         router
             .route("gv2mqtt/:id/set-mode-scene", mqtt_set_mode_scene)
+            .await?;
+        router
+            .route(
+                "gv2mqtt/select/:id/set-mode/:instance",
+                mqtt_select_mode_command,
+            )
             .await?;
 
         tokio::time::sleep(HASS_REGISTER_DELAY).await;

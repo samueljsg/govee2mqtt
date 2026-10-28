@@ -570,6 +570,42 @@ impl State {
         anyhow::bail!("Unable to control color for {device}");
     }
 
+    pub async fn device_set_mode(
+        self: &Arc<Self>,
+        device: &Device,
+        instance: &str,
+        option_name: &str,
+    ) -> anyhow::Result<()> {
+        let cap = device
+            .get_capability_by_instance(instance)
+            .ok_or_else(|| anyhow::anyhow!("device has no {instance}"))?;
+
+        let value = match &cap.parameters {
+            Some(crate::platform_api::DeviceParameters::Enum { options }) => options
+                .iter()
+                .find(|o| o.name.eq_ignore_ascii_case(option_name))
+                .map(|o| o.value.clone())
+                .ok_or_else(|| anyhow::anyhow!("option '{option_name}' not found for {instance}"))?,
+            _ => anyhow::bail!("instance {instance} does not have enum parameters"),
+        };
+
+        if let Some(client) = self.get_platform_client().await {
+            if let Some(info) = &device.http_device_info {
+                log::info!("Setting mode {instance} to {option_name} ({value:?}) on {device}");
+                client.control_device(info, cap, value.clone()).await?;
+
+                let state = self.clone();
+                let dev_id = device.id.clone();
+                tokio::spawn(async move {
+                    state.poll_after_control(dev_id).await;
+                });
+                return Ok(());
+            }
+        }
+
+        anyhow::bail!("Unable to control mode {instance} for {device}");
+    }
+
     pub async fn poll_after_control(self: &Arc<Self>, id: String) {
         let Some(device) = self.device_by_id(&id).await else {
             return;
@@ -580,7 +616,7 @@ impl State {
         if device.pollable_via_iot() && iot_available {
             return;
         }
-        if device.pollable_via_lan() {
+        if device.pollable_via_lan() && !device.needs_platform_poll() {
             return;
         }
 

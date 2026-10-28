@@ -1,6 +1,6 @@
 use crate::hass_mqtt::base::{Device, EntityConfig, Origin};
 use crate::hass_mqtt::instance::{publish_entity_config, EntityInstance};
-use crate::platform_api::DeviceCapability;
+use crate::platform_api::{DeviceCapability, DeviceType};
 use crate::service::device::Device as ServiceDevice;
 use crate::service::hass::{
     availability_topic, camel_case_to_space_separated, switch_instance_state_topic, topic_safe_id,
@@ -94,7 +94,7 @@ impl EntityInstance for CapabilitySwitch {
             .await
             .expect("device to exist");
 
-        if self.instance_name == "powerSwitch" {
+        if self.instance_name == "powerSwitch" && device.device_type() == DeviceType::Light {
             if let Some(state) = device.device_state() {
                 client
                     .publish(
@@ -116,24 +116,31 @@ impl EntityInstance for CapabilitySwitch {
         // <https://developer.govee.com/discuss/6596e84c901fb900312d5968>
 
         if let Some(cap) = device.get_state_capability_by_instance(&self.instance_name) {
-            match cap.state.pointer("/value").and_then(|v| v.as_i64()) {
-                Some(n) => {
-                    return client
-                        .publish(&self.switch.state_topic, if n != 0 { "ON" } else { "OFF" })
-                        .await;
-                }
-                None => {
-                    if cap.state.pointer("/value") == Some(&json!("")) {
-                        log::trace!(
-                            "CapabilitySwitch::notify_state ignore useless \
-                                            empty string state for {cap:?}"
-                        );
-                    } else {
-                        log::warn!("CapabilitySwitch::notify_state: Do something with {cap:#?}");
-                    }
-                    return Ok(());
-                }
+            if let Some(n) = cap.state.pointer("/value").and_then(|v| v.as_i64()) {
+                return client
+                    .publish(&self.switch.state_topic, if n != 0 { "ON" } else { "OFF" })
+                    .await;
             }
+            if let Some(b) = cap.state.pointer("/value").and_then(|v| v.as_bool()) {
+                return client
+                    .publish(&self.switch.state_topic, if b { "ON" } else { "OFF" })
+                    .await;
+            }
+            if let Some(s) = cap.state.pointer("/value").and_then(|v| v.as_str()) {
+                let on = s.eq_ignore_ascii_case("on") || s == "1";
+                return client
+                    .publish(&self.switch.state_topic, if on { "ON" } else { "OFF" })
+                    .await;
+            }
+            if cap.state.pointer("/value") == Some(&json!("")) {
+                log::trace!(
+                    "CapabilitySwitch::notify_state ignore useless \
+                                    empty string state for {cap:?}"
+                );
+            } else {
+                log::warn!("CapabilitySwitch::notify_state: Do something with {cap:#?}");
+            }
+            return Ok(());
         }
         log::trace!(
             "CapabilitySwitch::notify_state: didn't find state for {device} {instance}",

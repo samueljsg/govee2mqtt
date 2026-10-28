@@ -1,6 +1,7 @@
 name: Container Build
 
 on:
+  workflow_dispatch:
   pull_request:
     branches:
       - main
@@ -147,7 +148,7 @@ jobs:
         run: |
           docker buildx imagetools inspect ${{ env.IMAGE }}:${{ steps.meta.outputs.version }}
   addon:
-    if: ${{ github.event_name == 'push' && github.ref_type == 'tag' }}
+    if: ${{ (github.event_name == 'push' && github.ref_type == 'tag') || github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main') }}
     runs-on: ubuntu-latest
     needs:
       - merge
@@ -175,7 +176,7 @@ jobs:
             --target /data/addon
 
   test-addon:
-    if: ${{ ! ( github.event_name == 'push' && github.ref_type == 'tag' ) }}
+    if: ${{ github.event_name == 'pull_request' }}
     runs-on: ubuntu-latest
     needs:
       # Note! Despite the dependency edge here to the build steps above,

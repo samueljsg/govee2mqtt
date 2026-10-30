@@ -226,6 +226,32 @@ impl Device {
         self.clear_scene_if_color_changed();
     }
 
+    pub fn set_http_capability_state(
+        &mut self,
+        instance: &str,
+        kind: crate::platform_api::DeviceCapabilityKind,
+        state_value: serde_json::Value,
+    ) {
+        if let Some(http_state) = &mut self.http_device_state {
+            if let Some(cap) = http_state
+                .capabilities
+                .iter_mut()
+                .find(|c| c.instance.eq_ignore_ascii_case(instance))
+            {
+                cap.state = serde_json::json!({ "value": state_value });
+            } else {
+                http_state
+                    .capabilities
+                    .push(crate::platform_api::DeviceCapabilityState {
+                        kind,
+                        instance: instance.to_string(),
+                        state: serde_json::json!({ "value": state_value }),
+                    });
+            }
+            self.last_http_device_state_update.replace(Utc::now());
+        }
+    }
+
     pub fn set_undoc_device_info(
         &mut self,
         entry: crate::undoc_api::DeviceEntry,

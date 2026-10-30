@@ -594,6 +594,13 @@ impl State {
                 log::info!("Setting mode {instance} to {option_name} ({value:?}) on {device}");
                 client.control_device(info, cap, value.clone()).await?;
 
+                // Optimistically update device state and immediately notify Home Assistant
+                {
+                    let mut dev = self.device_mut(&device.sku, &device.id).await;
+                    dev.set_http_capability_state(instance, cap.kind.clone(), value.clone());
+                }
+                self.notify_of_state_change(&device.id).await.ok();
+
                 let state = self.clone();
                 let dev_id = device.id.clone();
                 tokio::spawn(async move {
